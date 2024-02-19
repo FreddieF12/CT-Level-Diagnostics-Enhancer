@@ -1,0 +1,241 @@
+---
+title: "PGT KEP Individual Project"
+output: html_document
+date: "2023-08-18"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Installing the Packages and Activating Them
+
+
+
+```{r pressure, echo=TRUE}
+install.packages("openxlsx")
+install.packages("dplyr")
+```
+
+```{r}
+library(openxlsx)
+library(dplyr)
+```
+
+## Reading in the Excel Document
+
+
+```{r pressure, echo=TRUE}
+CTNGdata <- read.xlsx("Analysis of CTNG using BioServ 2609.xlsx",sheet = "Sequence 10 Data Hood")
+CTNGanalysis <- read.xlsx("Analysis of CTNG using BioServ 2609.xlsx",sheet = "Sequence 10 Analysis Hood")
+```
+
+## Isolating the Urine Samples
+
+```{r}
+selected_columns <- CTNGdata[, CTNGdata[3,] %in% c("1-320-1", "1-320-2", "1-320-3", "1-320-4", "1-320-11", "1-320-12", "1-320-13", "1-320-14", "1-320-15", "1-320-21", "1-320-22", "1-320-23", "1-320-24", "1-320-25", "1-320-41", "1-320-42", "1-320-43", "1-320-44", "1-320-45", "1-320-46", "1-320-47", "1-320-48", "1-320-49", "1-320-50", "1-320-56", "1-320-57", "1-320-58", "1-320-59", "1-320-60", "1-320-66", "1-320-67", "1-320-68", "1-320-69", "1-320-70", "1-320-71", "1-320-72", "1-320-73", "1-320-74", "1-320-75", "1-320-76", "1-320-77", "1-320-78", "1-320-79", "1-320-80", "1-320-91", "1-320-92", "1-320-93", "1-320-94", "1-320-95", "1-320-101", "1-320-102", "1-320-103", "1-320-104", "1-320-105", "1-320-109", "1-320-115", "1-320-116", "1-320-117", "1-320-118", "1-320-119", "1-320-120", "1-320-121", "1-320-123", "1-320-127", "1-320-143", "1-320-144", "1-320-145", "1-320-146", "1-320-147", "1-320-148", "1-320-149", "1-320-150", "1-320-151", "1-320-152", "1-320-153", "1-320-154", "1-320-155", "1-320-156", "1-320-157", "1-320-158", "1-320-159", "1-320-160", "1-320-161", "1-320-162", "1-320-163", "1-320-164", "1-320-165", "1-320-166", "1-320-167", "1-320-168", "1-320-169", "1-320-171", "1-320-172", "1-320-173", "1-320-174", "1-320-175", "1-320-176", "1-320-177", "1-320-178", "1-320-179", "1-320-180", "1-320-181", "1-320-208", "1-320-209", "1-320-210", "1-320-211", "1-320-212", "1-320-213", "1-320-214", "1-320-215", "1-320-216", "1-320-217", "1-320-218", "1-320-219", "1-320-220", "1-320-221", "1-320-222", "1-320-223", "1-320-224", "1-320-225", "1-320-226", "1-320-227", "1-320-228", "1-320-229", "1-320-230", "1-320-231", "1-320-232", "1-320-233", "1-320-234", "1-320-235", "1-320-236", "1-320-237", "1-320-238", "1-320-239", "1-320-240", "1-320-241", "1-320-242")]
+```
+
+## Removing the Samples with "Retest"
+```{r}
+columns_to_keep <- !grepl("Retest", selected_columns[2,])
+filtered_data <- CTNGdata[, columns_to_keep]
+```
+
+## Isolating the Raw Data
+
+```{r}
+selected_data <- filtered_data[1:63, 6:690]
+```
+
+## Replacing the Column Names with the Sample ID Whilst Replacing Na's With 0
+
+```{r}
+new_col_names <- as.character(selected_data[3, ])
+
+selected_data <- selected_data[-3, ]
+
+colnames(selected_data) <- new_col_names
+
+selected_data[is.na(selected_data)] <- 0
+```
+
+## Creating Delta Value Function
+
+```{r}
+calculate_differences <- function(data) {
+  num_rows <- nrow(data)  # Get the number of rows in the data
+  num_cols <- ncol(data)  # Get the number of columns in the data
+  delta_values <- matrix(NA, nrow = num_rows - 4, ncol = num_cols)  # Create a matrix to store the differences
+  
+  for (col in 1:num_cols) {  # Loop through each column
+    cleaned_col <- as.numeric(gsub("[^0-9.-]", "", data[, col]))  # Remove non-numeric characters and convert to numeric
+    cleaned_col <- na.omit(cleaned_col)  # Remove NAs before calculation
+    
+    for (row in 5:num_rows) {  # Loop through rows starting from the 5th row
+      delta_values[row - 4, col] <- cleaned_col[row] - cleaned_col[row - 1]  # Calculate and store the difference
+    }
+  }
+  
+  colnames(delta_values) <- paste(colnames(data), "_delta", sep = "")  # Rename columns to indicate differences
+  delta_df <- data.frame(delta_values)  # Convert the matrix to a data frame
+  return(delta_df)  # Return the data frame with calculated differences
+}
+
+# Call the function with your selected_data data.frame
+delta_values_df <- calculate_differences(selected_data)
+
+```
+
+## Isolating the Highest Delta Value in Each Column
+
+```{r}
+# Define a function named highlight_max_values_and_combine that takes a data frame df as input
+highlight_max_values_and_combine <- function(df) {
+  # Get the number of rows and columns in the input data frame
+  num_rows <- nrow(df)
+  num_cols <- ncol(df)
+
+  # Create a vector to store the calculated results for each column
+  result <- numeric(num_cols)
+  
+  # Loop through each column of the input data frame
+  for (col in 1:num_cols) {
+    # Initialize variables to keep track of the maximum value and its corresponding row
+    max_value <- df[1, col]
+    max_row <- 1
+    
+    # Loop through each row in the current column
+    for (row in 2:num_rows) {
+      # Check if the current value is not missing (NA) and greater than the current maximum value
+      if (!is.na(df[row, col]) && df[row, col] > max_value) {
+        # Update the maximum value and its corresponding row
+        max_value <- df[row, col]
+        max_row <- row
+      }
+    }
+    
+    # Calculate the final value by adding 1 to the row index and then adding 2
+    result[col] <- max_row + 1 + 2
+  }
+
+  # Create a data frame named highlighted_rows from the result vector
+  highlighted_rows <- data.frame(result)
+
+  # Return the data frame containing the highlighted rows
+  return(highlighted_rows)
+}
+
+Ct <- highlight_max_values_and_combine(delta_values_df)
+Ct <- as.data.frame(t(Ct))
+colnames(Ct) <- colnames(selected_data)
+print(Ct)
+```
+
+## Diagnostic
+
+```{r}
+Ct_threshold_value <- 40
+# Assuming CTNGanalysis is the name of your data frame
+CTNGanalysis_columns <- data.frame(t(CTNGanalysis[, c(3, 6)]))
+# Assuming your data frame is named CTNNGanalysis_columns
+CTNGanalysis_columns <- CTNGanalysis_columns[, -1]
+colnames(CTNGanalysis_columns) <- CTNGanalysis_columns[1, ]
+CTNGanalysis_columns <- CTNGanalysis_columns[-1, ]
+
+# Iterate through column names in CTNGanalysis_columns
+for (col_name in colnames(CTNGanalysis_columns)) {
+  # Check if the current column name exists in both CTNGanalysis_columns and Ct
+  if (col_name %in% colnames(Ct)) {
+    # Get the value from the first row of CTNGanalysis_columns and the current column
+    value <- CTNGanalysis_columns[1, col_name]
+    
+    # Check if the value is not missing and has a length greater than 0
+    if (!is.na(value) && length(value) > 0) {
+      # Assign the value to the corresponding cell in the second row of Ct
+      Ct[2, col_name] <- value
+    }
+  }
+}
+
+# Check for NA values in the second row
+na_in_second_row <- apply(Ct, 2, function(col) any(is.na(col)))
+
+# Remove columns with NA values in the second row
+Ct_cleaned <- Ct[, !na_in_second_row]
+
+Ct_cleaned[3, ] <- NA
+
+# Loop through each column in the data.frame
+for (col in 1:ncol(Ct_cleaned)) {
+  # Check the value in the first row
+   if (Ct_cleaned[1, col] > Ct_threshold_value) {
+    Ct_cleaned[3, col] <- "Neg"
+  } else {
+    Ct_cleaned[3, col] <- "Pos"
+  }
+}
+
+
+#Ct_cleaned <- addThirdRow(Ct_cleaned)
+
+rownames(Ct_cleaned)[2] <- "CTres"
+rownames(Ct_cleaned)[3] <- "ThreshRes"
+```
+##Adding TP/TN/FP/FN
+```{r}
+add_fourth_row <- function(column_values) {
+  if (column_values[2] == "Pos" && column_values[3] == "Pos") {
+    return("TP")
+  } else if (column_values[2] == "Neg" && column_values[3] == "Neg") {
+    return("TN")
+  } else if (column_values[2] == "Pos" && column_values[3] == "Neg") {
+    return("FN")
+  } else if (column_values[2] == "Neg" && column_values[3] == "Pos") {
+    return("FP")
+  } else {
+    return(NA)  # Handle other cases as needed
+  }
+}
+
+# Apply the function to each column in Ct_cleaned and store the results in the fourth row
+Ct_cleaned[4, ] <- sapply(Ct_cleaned, add_fourth_row)
+rownames(Ct_cleaned) [4] <- "ConfMatrix"
+# Print the updated data frame
+print(Ct_cleaned)
+
+```
+## TP/TN/FP/FN
+```{r}
+# Assuming Ct_cleaned is your data frame
+# Sum the number of "TP" in the third row and assign them to the object "TP"
+TP <- sum(Ct_cleaned[4,] == "TP", na.rm = TRUE)
+
+# Sum the number of "TN" in the third row and assign them to the object "TN"
+TN <- sum(Ct_cleaned[4,] == "TN", na.rm = TRUE)
+
+# Sum the number of "FP" in the third row and assign them to the object "FP"
+FP <- sum(Ct_cleaned[4,] == "FP", na.rm = TRUE)
+
+# Sum the number of "FN" in the third row and assign them to the object "FN"
+FN <- sum(Ct_cleaned[4,] == "FN", na.rm = TRUE)
+
+# Print the values of the calculated variables
+print(paste("True Positives:", TP))
+print(paste("True Negatives:", TN))
+print(paste("False Positives:", FP))
+print(paste("False Negatives:", FN))
+```
+
+##Calculations
+```{r}
+Sensitivity <- TP/(TP+FN)
+Specificity <- TN/(TN+TP)
+Accuracy <- (TP+TN)/(TP+TN+FP+FN)
+
+print(paste("Sensitivity:",Sensitivity))
+print(paste("Specificity:",Specificity))
+print(paste("Accuracy:",Accuracy))
+
+```
+
